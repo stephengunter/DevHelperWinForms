@@ -150,28 +150,70 @@ public static class GeneralHelpers
          var trimmedLine = line.Trim();
 
          // Collect attributes (lines starting with [)
-         if (trimmedLine.StartsWith("["))
+         if (trimmedLine.StartsWith("[") && trimmedLine.EndsWith("]"))
          {
             attributesBuffer.Add(trimmedLine);
             continue;
          }
 
          // Check for properties: must start with "public" and contain { get; set; } or =>
-         if (trimmedLine.StartsWith("public") && (trimmedLine.Contains("{ get;") || trimmedLine.Contains("=>")))
+         if (IsPropertyLine(trimmedLine))
          {
-            properties.Add(new ClassProperty(trimmedLine, attributesBuffer.Any() ? new List<string>(attributesBuffer) : null));
+            // Extract the name and content from the property line
+            var propertyName = ExtractPropertyName(trimmedLine);
+            var propertyContent = trimmedLine; // Full line as content
+
+            properties.Add(new ClassProperty(
+                propertyName,
+                propertyContent,
+                attributesBuffer.Any() ? new List<string>(attributesBuffer) : null
+            ));
             attributesBuffer.Clear();
          }
          // Check for methods: must start with "public" and contain "(" and ")"
-         else if (trimmedLine.StartsWith("public") && trimmedLine.Contains("(") && trimmedLine.EndsWith(")"))
+         else if (IsMethodLine(trimmedLine))
          {
             methods.Add(trimmedLine);
+            attributesBuffer.Clear();
          }
       }
 
       return new ClassContent(properties, methods);
    }
 
+   // Helper to determine if a line represents a property
+   private static bool IsPropertyLine(string line)
+   {
+      return line.StartsWith("public") && (line.Contains("{ get;") || line.Contains("=>"));
+   }
+
+   // Helper to determine if a line represents a method
+   private static bool IsMethodLine(string line)
+   {
+      return line.StartsWith("public") && line.Contains("(") && line.Contains(")") && !line.Contains("{ get; }");
+   }
+   private static string ExtractPropertyName(string line)
+   {
+      // Split the line by whitespace to get tokens
+      var tokens = line.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+      // The property name is usually the third token in a "public Type Name" pattern
+      // Ensure that tokens[2] exists and is not a keyword
+      if (tokens.Length > 2 && !tokens[2].Contains("{") && !tokens[2].Contains("=>"))
+      {
+         return tokens[2];
+      }
+
+      // Fallback: Attempt to locate the property name in a more generic way
+      var match = Regex.Match(line, @"\bpublic\s+\w+\s+(\w+)\s*[{=>]");
+      return match.Success ? match.Groups[1].Value : "Unknown";
+   }
+   public static string? FindEditorAttribute(this ClassProperty prop)
+   {
+      if (prop.Attributes == null) return null;
+      if (prop.Attributes.Count == 0) return null;
+      return prop.Attributes.FirstOrDefault(attribute => attribute.TrimStart().StartsWith("[Editor"));
+   }
 
    //public static void AddClass(this ICollection<string> lines, string name, ICollection<string> names)
    //{
@@ -208,11 +250,13 @@ public class ClassProperty
 }
 public class EditableProperty
 {
-   public EditableProperty(string content, string label)
+   public EditableProperty(string name, string content, string label)
    {
+      Name = name;
       Content = content;
       Label = label;
    }
+   public string Name { get; set; }
    public string Content { get; set; }
    public string Label { get; set; }
 }

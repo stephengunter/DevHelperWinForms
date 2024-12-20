@@ -3,9 +3,9 @@
 namespace DevHelperWinForms;
 public static class ViewHelpers
 {
-   public static void AddViewClassLine(this ICollection<string> lines, string name, string baseClass, ICollection<string> interfaces)
+   public static void AddViewClassLine(this ICollection<string> lines, string viewModelName, string baseClass, ICollection<string> interfaces)
    {
-      string line = $"public class {name}ViewModel";
+      string line = $"public class {viewModelName}";
       if (!string.IsNullOrEmpty(baseClass))
       {
          if (baseClass == "EntityBase") line += " : EntityBaseView";

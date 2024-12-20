@@ -1,15 +1,8 @@
 using Humanizer;
 using Microsoft.Extensions.Options;
 using System;
-using System.Collections.Generic;
-using System.Drawing.Drawing2D;
-using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
-using System.Windows.Forms;
 using System.Xml.Linq;
-using Ude;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DevHelperWinForms;
 public partial class Form1 : Form
@@ -27,6 +20,12 @@ public partial class Form1 : Form
       txt_core.Text = _appSettings.CorePath;
       txt_web.Text = _appSettings.WebPath;
 
+      
+      cb_action.Items.Add("Update");
+      cb_action.Items.Add("Create");
+      cb_action.SelectedIndex = 0;
+      cb_action.Text = "Update";
+
       Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
    }
 
@@ -35,7 +34,7 @@ public partial class Form1 : Form
    string WebPath => Path.Combine(RootPath, txt_web.Text);
 
    ICollection<string> ModelNames => txt_name.Text.Split(".");
-   string GetModelName() => ModelNames.Last().Titleize();
+   string GetModelName() => ModelNames.Last();//.Titleize();
 
    string TemplatePath => txt_template.Text;
    void SetTemplatePath(string folder) 
@@ -49,9 +48,8 @@ public partial class Form1 : Form
    }
    List<string> ReadSourcceLines() => File.ReadAllLines(TemplatePath, Encoding.GetEncoding(1252)).ToList();
 
-   List<EditableProperty> AddViewModel()
+   List<EditableProperty> AddViewModel(string viewModelName)
    {
-      string name = GetModelName();
       var sourceLines = ReadSourcceLines();
       var classLine = sourceLines.GetClassLine();
 
@@ -62,37 +60,24 @@ public partial class Form1 : Form
       lines.Add("using Infrastructure.Views;");
       lines.Add("");
       lines.AddNamespace("ApplicationCore.Views", ModelNames);
-      lines.AddViewClassLine(name, baseClass, interfaces);
+      lines.AddViewClassLine(viewModelName, baseClass, interfaces);
 
       lines.Add("{");
-      //props
-      var props = sourceLines.GetPropLines();
-      var ClassContent = props.ParseLinesForPropsAndMethods();
+      var classContent = sourceLines.GetPropLines().ParseLinesForPropsAndMethods();
       var editableProps = new List<EditableProperty>();
-      foreach (ClassProperty prop in ClassContent.Properties)
+      foreach (ClassProperty prop in classContent.Properties)
       {
-         
-         if (prop.Attributes == null)
-         {
-            lines.Add(prop.Content.StartWithTab(1));
-         }
-         else 
-         {
-            lines.Add(prop.Content.StartWithTab(1));
-            foreach (var attribute in prop.Attributes)
-            {
-               if (attribute.TrimStart().StartsWith("[Editor"))
-               {
-                  // Extract the attribute details
-                  var labelMatch = System.Text.RegularExpressions.Regex.Match(attribute, @"\(\""(.*?)\""");
-                  var enableMatch = System.Text.RegularExpressions.Regex.Match(attribute, @"Enable\s*=\s*(\w+)");
+         lines.Add(prop.Content.StartWithTab(1));
 
-                  var label = labelMatch.Success ? labelMatch.Groups[1].Value : "Unknown";
-                  var enable = enableMatch.Success ? enableMatch.Groups[1].Value : "False";
-                  editableProps.Add(new EditableProperty(prop.Content, label));
-                  break;
-               }
-            }
+         var editorAttribute = prop.FindEditorAttribute();
+         if (editorAttribute != null)
+         {
+            var labelMatch = System.Text.RegularExpressions.Regex.Match(editorAttribute, @"\(\""(.*?)\""");
+            var enableMatch = System.Text.RegularExpressions.Regex.Match(editorAttribute, @"Enable\s*=\s*(\w+)");
+
+            var label = labelMatch.Success ? labelMatch.Groups[1].Value : "Unknown";
+            var enable = enableMatch.Success ? enableMatch.Groups[1].Value : "False";
+            editableProps.Add(new EditableProperty(prop.Name, prop.Content, label));
          }
       }
 
@@ -110,14 +95,14 @@ public partial class Form1 : Form
       AddMessage($"{fileName} Created.");
       return editableProps;
    }
-   void AddWebModel(List<EditableProperty> editableProperties)
+   WebModelResult AddWebModel(List<EditableProperty> editableProperties)
    {
       string name = GetModelName();
 
       var lines = new List<string>();
       lines.Add("");
       lines.AddNamespace("Web.Models", ModelNames);
-      lines.AddWebModelContent(name);
+      var result = lines.AddWebModelContent(name, editableProperties);
 
       string path = Path.Combine(WebPath, "Models");
       foreach (var part in ModelNames)
@@ -128,6 +113,8 @@ public partial class Form1 : Form
 
       fileName = SaveLinesToFile(fileName, lines);
       AddMessage($"{fileName} Created.");
+
+      return result;
    }
    void AddDtoMapper()
    {
@@ -231,7 +218,7 @@ public partial class Form1 : Form
       lines.AddHelperContent(name);
       lines.Add("}");
 
-      string path = Path.Combine(CorePath, "Helpers");
+      string path = Path.Combine(CorePath, "Helpers", "Models");
       foreach (var part in ModelNames)
       {
          path = Path.Combine(path, part);
@@ -241,11 +228,12 @@ public partial class Form1 : Form
       fileName = SaveLinesToFile(fileName, lines);
       AddMessage($"{fileName} Created.");
    }
-   void AddController()
+   void AddController(WebModelResult result)
    {
       string name = GetModelName();
 
       var lines = new List<string>();
+      lines.AddUsing("Infrastructure.Helpers;", new List<string>());
       lines.AddUsing("ApplicationCore.Services", ModelNames);
       lines.AddUsing("ApplicationCore.Views", ModelNames);
       lines.AddUsing("ApplicationCore.Helpers", ModelNames);
@@ -256,7 +244,7 @@ public partial class Form1 : Form
       string controllerName = lines.AddControllerClassLine(name);
 
       lines.Add("{");
-      lines.AddControllerContent(name);
+      lines.AddControllerContent(name, result);
       lines.Add("}");
 
       string path = Path.Combine(WebPath, "Controllers", "Admin");
@@ -276,6 +264,8 @@ public partial class Form1 : Form
 
    string ErrMsg()
    {
+      if (string.IsNullOrEmpty(cb_action.Text)) return "必須選擇Action";
+
       if (string.IsNullOrEmpty(txt_name.Text)) return "必須填寫Name";
 
       SetTemplatePath("Models");
@@ -294,16 +284,20 @@ public partial class Form1 : Form
          AddMessage(message, true);
          return;
       }
+      string name = GetModelName();
+      string viewModelName = $"{name}ViewModel";
+      var editableProperties = AddViewModel(viewModelName);
+      var result = AddWebModel(editableProperties);
+      AddController(result);
 
-
-
-      var editableProperties = AddViewModel();
-      //AddDtoMapper();
-      AddWebModel(editableProperties);
-      //AddSpecification();
-      //AddService();
-      //AddHelper();
-      //AddController();
+      if (cb_action.Text.ToLower() == "create")
+      {
+         AddDtoMapper();
+         AddSpecification();
+         AddService();
+         AddHelper();
+         AddController(result);
+      }
 
    }
    

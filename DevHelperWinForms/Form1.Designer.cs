@@ -18,7 +18,7 @@
       private Label lbl_template;
       private Label lbl_name;
 
-
+      private ComboBox cb_action;
       private Button btn_submit;
 
       private FlowLayoutPanel chatPanel;
@@ -51,6 +51,7 @@
          lbl_web = new Label();
          lbl_template = new Label();
          lbl_name = new Label();
+         cb_action = new ComboBox();
          btn_submit = new Button();
          SuspendLayout();
          // 
@@ -134,12 +135,21 @@
          lbl_name.TabIndex = 8;
          lbl_name.Text = "Name:";
          // 
+         // cb_action
+         // 
+         cb_action.Location = new Point(207, 175);
+         cb_action.Name = "cb_action";
+         cb_action.Size = new Size(115, 23);
+         cb_action.TabIndex = 10;
+         
+         
+         // 
          // btn_submit
          // 
          btn_submit.Location = new Point(337, 175);
          btn_submit.Name = "btn_submit";
          btn_submit.Size = new Size(75, 23);
-         btn_submit.TabIndex = 10;
+         btn_submit.TabIndex = 11;
          btn_submit.Text = "確定";
          btn_submit.UseVisualStyleBackColor = true;
          btn_submit.Click += btn_submit_Click;
@@ -163,6 +173,7 @@
          AutoScaleDimensions = new SizeF(7F, 15F);
          AutoScaleMode = AutoScaleMode.Font;
          ClientSize = new Size(700, 480);
+         Controls.Add(cb_action);
          Controls.Add(btn_submit);
          Controls.Add(lbl_root);
          Controls.Add(txt_root);
